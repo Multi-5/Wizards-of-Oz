@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16
+    # load credentials from .env in the same directory as this compose file
+    env_file: .env
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: warehouse
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    ports: ["5432:5432"]
+
+  adminer:
+    image: adminer
+    ports: ["8081:8080"]
+    depends_on: [postgres]
+
+  airflow:
+    image: apache/airflow:3.1.0
+    # load Airflow / Postgres creds from .env (this file is located in `./airflow/.env`)
+    env_file: .env
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/warehouse
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./data:/opt/airflow/data
+      # requirements are installed into the image at build time via Dockerfile
+    command: >
+      bash -lc "airflow db migrate &&
+                # start dag-processor so DAG files are parsed, then api server and scheduler
+                airflow dag-processor & airflow api-server & airflow scheduler"
+    ports: ["8080:8080"]
+    depends_on: [postgres]
+
+volumes:
+  pgdata:
