@@ -25,15 +25,19 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/warehouse
+      AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-admin}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-admin}
     user: "${AIRFLOW_UID:-50000}:0"
     volumes:
       - ./dags:/opt/airflow/dags
       - ./data:/opt/airflow/data
+      - ./data/product-database:/opt/airflow/data/product-database
       # requirements are installed into the image at build time via Dockerfile
     command: >
-      bash -lc "airflow db migrate &&
-                # start dag-processor so DAG files are parsed, then api server and scheduler
-                airflow dag-processor & airflow api-server & airflow scheduler"
+      bash -lc "airflow dag-processor & airflow api-server & airflow scheduler"
     ports: ["8080:8080"]
     depends_on: [postgres]
 
