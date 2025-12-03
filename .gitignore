@@ -1,5 +1,7 @@
 /airflow/data/landing/
 /airflow/data/staging/
-/airflow/data/uncleaned/food.parquet
+/airflow/data/data_unclean/food.parquet
+/airflow/data/production/
+*.parquet
 /airflow/logs/
 /data/food_data/
