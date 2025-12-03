@@ -1,4 +1,4 @@
-FROM apache/airflow:2.9.2
+FROM apache/airflow:3.1.0
 
 # Install Python requirements at image build time to avoid runtime upgrades that can
 # break the base Airflow installation. Keep running as the airflow user.
