@@ -1,11 +1,10 @@
 from __future__ import annotations
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.utils.dates import days_ago
 
 
 def redis_smoke_test():
@@ -51,8 +50,8 @@ def _make_dag() -> DAG:
     with DAG(
         dag_id="integration_test_dag",
         description="Smoke tests for Redis and Neo4j connectivity",
-        start_date=days_ago(1),
-        schedule_interval=None,
+        start_date=datetime(2025, 12, 1),
+        schedule=None,
         catchup=False,
         tags=["infra", "smoke"],
     ) as dag:
