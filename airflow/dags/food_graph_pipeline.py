@@ -8,6 +8,18 @@ from airflow.operators.python import PythonOperator
 from neo4j import GraphDatabase
 import redis
 
+DATA_FILE = "/opt/airflow/data/production/enriched_food_data_latest.parquet"
+
+
+def _ensure_directories(paths: set[str]) -> None:
+    for path in paths:
+        if not path:
+            continue
+        os.makedirs(path, exist_ok=True)
+
+
+_ensure_directories({os.path.dirname(DATA_FILE)})
+
 
 def load_food_data_to_neo4j():
     """Load food data from parquet and create graph in Neo4j"""
@@ -20,7 +32,7 @@ def load_food_data_to_neo4j():
     driver = GraphDatabase.driver(uri, auth=(user, password))
     
     # Load data
-    df = pd.read_parquet("/opt/airflow/data/production/enriched_food_data_latest.parquet")
+    df = pd.read_parquet(DATA_FILE)
     print(f"Loaded {len(df)} food items")
     
     # Sample 100 items to keep graph manageable

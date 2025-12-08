@@ -1,3 +1,4 @@
+import os
 import pendulum
 from datetime import timedelta
 from airflow import DAG
@@ -13,6 +14,23 @@ LANDING_PARQUET = "/opt/airflow/data/landing/food.parquet"
 STAGING_USDA = "/opt/airflow/data/staging/usda_cleaned.parquet"
 STAGING_OFF = "/opt/airflow/data/staging/openfoodfacts_cleaned.parquet"
 STAGING_ENRICHED = "/opt/airflow/data/staging/enriched_food_data.parquet"
+MAX_OPENFOODFACTS_ROWS = int(os.environ.get("STAGING_MAX_OFF_ROWS", "300000"))
+
+
+def _ensure_directories(paths: set[str]) -> None:
+    for path in paths:
+        if not path:
+            continue
+        os.makedirs(path, exist_ok=True)
+
+
+_ensure_directories({
+    os.path.dirname(LANDING_JSON),
+    os.path.dirname(LANDING_PARQUET),
+    os.path.dirname(STAGING_USDA),
+    os.path.dirname(STAGING_OFF),
+    os.path.dirname(STAGING_ENRICHED),
+})
 
 
 def clean_usda_data():
@@ -90,20 +108,19 @@ def clean_usda_data():
 def clean_openfoodfacts_data():
     """
     Lädt OpenFoodFacts Parquet aus Landing Zone, bereinigt und normalisiert die Daten.
-    Verwendet Chunking, um Memory-Probleme bei großen Dateien zu vermeiden.
+    Nutzt Chunking + Streaming-Write, um Memory-Probleme zu vermeiden.
     """
+    import pyarrow as pa
     import pyarrow.parquet as pq
-    
-    # Wähle relevante Spalten aus
+
     relevant_cols = [
-        'code', 'product_name', 'brands', 'categories', 
-        'energy-kcal_100g', 'proteins_100g', 'fat_100g', 
+        'code', 'product_name', 'brands', 'categories',
+        'energy-kcal_100g', 'proteins_100g', 'fat_100g',
         'carbohydrates_100g', 'sugars_100g', 'fiber_100g',
         'salt_100g', 'sodium_100g', 'nutrition-score-fr_100g',
         'main_category'
     ]
-    
-    # Umbenennung für Konsistenz
+
     rename_map = {
         'code': 'food_id',
         'product_name': 'description',
@@ -117,66 +134,79 @@ def clean_openfoodfacts_data():
         'sodium_100g': 'sodium_mg',
         'salt_100g': 'salt_g'
     }
-    
-    # Lese Parquet in Chunks (jeweils 50k Zeilen für bessere Memory-Effizienz)
+
     parquet_file = pq.ParquetFile(LANDING_PARQUET)
-    
-    print(f"📊 Reading {parquet_file.metadata.num_rows} rows in chunks of 50k...")
-    
-    chunks = []
-    for batch in parquet_file.iter_batches(batch_size=50000):
+    available_columns = [col for col in relevant_cols if col in parquet_file.schema.names]
+    chunk_size = 10000
+    print(f"📊 Reading {parquet_file.metadata.num_rows} rows in chunks of {chunk_size:,}...")
+
+    temp_output = f"{STAGING_OFF}.tmp"
+    if os.path.exists(temp_output):
+        os.remove(temp_output)
+
+    writer = None
+    total_rows = 0
+    total_kept = 0
+
+    for batch in parquet_file.iter_batches(batch_size=chunk_size, columns=available_columns):
         df_chunk = batch.to_pandas()
-        
-        # Wähle nur die relevanten Spalten aus (die tatsächlich existieren)
-        existing_cols = [col for col in relevant_cols if col in df_chunk.columns]
-        df_chunk = df_chunk[existing_cols]
-        
-        # Extrahiere product_name aus dem Array von Dictionaries (falls vorhanden)
+        total_rows += len(df_chunk)
+
         if 'product_name' in df_chunk.columns:
             def extract_product_name(arr):
                 if isinstance(arr, (list, tuple)) and len(arr) > 0:
-                    # Nimm den ersten Eintrag (normalerweise 'main' oder erste Sprache)
                     first_entry = arr[0]
                     if isinstance(first_entry, dict) and 'text' in first_entry:
                         return first_entry['text']
                 return None
-            
+
             df_chunk['product_name'] = df_chunk['product_name'].apply(extract_product_name)
-        
-        # Umbenennung
+
         df_chunk = df_chunk.rename(columns=rename_map)
-        
-        # Füge Quell-Spalte hinzu
         df_chunk['source'] = 'OpenFoodFacts'
-        
-        # Datenbereinigung pro Chunk
-        # 1. Entferne Zeilen ohne Beschreibung
-        df_chunk = df_chunk.dropna(subset=['description'])
-        
-        # 2. Konvertiere Natrium von g in mg (falls vorhanden)
+
+        if 'description' not in df_chunk.columns:
+            df_chunk['description'] = None
+
+        for fallback_col in ('brands', 'categories'):
+            if fallback_col in df_chunk.columns:
+                df_chunk['description'] = df_chunk['description'].fillna(df_chunk[fallback_col])
+
+        df_chunk['description'] = df_chunk['description'].fillna('unknown product')
+
         if 'sodium_mg' in df_chunk.columns:
-            df_chunk['sodium_mg'] = df_chunk['sodium_mg'] * 1000  # g → mg
-        
-        # 3. Fülle fehlende numerische Werte mit 0
+            df_chunk['sodium_mg'] = df_chunk['sodium_mg'] * 1000
+
         numeric_cols = df_chunk.select_dtypes(include=['float64', 'int64']).columns
         df_chunk[numeric_cols] = df_chunk[numeric_cols].fillna(0)
-        
-        # 4. Normalisiere Text
+
         if 'category' in df_chunk.columns:
             df_chunk['category'] = df_chunk['category'].fillna('unknown').str.lower().str.strip()
         df_chunk['description'] = df_chunk['description'].str.lower().str.strip()
-        
-        chunks.append(df_chunk)
-    
-    # Kombiniere alle Chunks
-    df = pd.concat(chunks, ignore_index=True)
-    
-    # Entferne Duplikate basierend auf food_id (nach dem Mergen aller Chunks)
-    df = df.drop_duplicates(subset=['food_id'], keep='first')
-    
-    # Speichere in Staging
-    df.to_parquet(STAGING_OFF, index=False)
-    print(f"✅ OpenFoodFacts data cleaned: {len(df)} records saved to {STAGING_OFF}")
+
+        df_chunk = df_chunk.drop_duplicates(subset=['food_id'], keep='first')
+
+        if df_chunk.empty:
+            continue
+
+        total_kept += len(df_chunk)
+
+        table = pa.Table.from_pandas(df_chunk, preserve_index=False)
+        if writer is None:
+            writer = pq.ParquetWriter(temp_output, table.schema, compression="snappy")
+        writer.write_table(table)
+
+    if writer is not None:
+        writer.close()
+        os.replace(temp_output, STAGING_OFF)
+    else:
+        empty_df = pd.DataFrame(columns=list(rename_map.values()) + ['source'])
+        empty_df.to_parquet(STAGING_OFF, index=False)
+
+    print(
+        f"✅ OpenFoodFacts data cleaned: {total_kept} records saved to {STAGING_OFF} "
+        f"(processed {total_rows} rows)"
+    )
 
 
 def enrich_and_merge():
@@ -188,38 +218,57 @@ def enrich_and_merge():
         print("📥 Loading USDA data...")
         usda = pd.read_parquet(STAGING_USDA)
         print(f"   USDA: {len(usda)} rows, {len(usda.columns)} columns")
-        
+
         print("📥 Loading OpenFoodFacts data...")
-        off = pd.read_parquet(STAGING_OFF)
-        print(f"   OpenFoodFacts: {len(off)} rows, {len(off.columns)} columns")
-        
-        # Stelle sicher, dass beide Datasets die gleichen Spalten haben
-        # Füge fehlende Spalten mit NaN hinzu
+        if MAX_OPENFOODFACTS_ROWS > 0:
+            import pyarrow.parquet as pq
+
+            parquet_off = pq.ParquetFile(STAGING_OFF)
+            total_off = parquet_off.metadata.num_rows
+            batches = []
+            rows_needed = MAX_OPENFOODFACTS_ROWS
+
+            for batch in parquet_off.iter_batches(batch_size=50000):
+                df_batch = batch.to_pandas()
+                batches.append(df_batch)
+                rows_needed -= len(df_batch)
+                if rows_needed <= 0:
+                    break
+
+            if batches:
+                off = pd.concat(batches, ignore_index=True)
+                if len(off) > MAX_OPENFOODFACTS_ROWS:
+                    off = off.head(MAX_OPENFOODFACTS_ROWS)
+            else:
+                off = pd.DataFrame()
+
+            print(
+                f"   OpenFoodFacts: {len(off)} rows used (total {total_off}, limit {MAX_OPENFOODFACTS_ROWS})"
+            )
+        else:
+            off = pd.read_parquet(STAGING_OFF)
+            print(f"   OpenFoodFacts: {len(off)} rows, {len(off.columns)} columns")
+
         all_cols = set(usda.columns).union(set(off.columns))
         print(f"🔄 Harmonizing {len(all_cols)} unique columns...")
-        
+
         for col in all_cols:
             if col not in usda.columns:
                 usda[col] = None
             if col not in off.columns:
                 off[col] = None
-        
-        # Sortiere Spalten für Konsistenz
+
         usda = usda[sorted(usda.columns)]
         off = off[sorted(off.columns)]
-        
-        # Kombiniere beide Datasets
+
         print("🔗 Merging datasets...")
         enriched = pd.concat([usda, off], ignore_index=True)
         print(f"   Combined: {len(enriched)} rows")
-        
-        # Zusätzliche berechnete Spalten für Analysen
-        # Vitamin-Dichte: Summe der Vitamine pro 100 kcal
+
         print("🧮 Computing vitamin density...")
         vitamin_cols = ['vitamin_c_mg', 'vitamin_a_ug', 'vitamin_d_ug', 'vitamin_e_mg']
-        # Nur Spalten verwenden, die existieren
         available_vitamin_cols = [col for col in vitamin_cols if col in enriched.columns]
-        
+
         if available_vitamin_cols:
             enriched['total_vitamins'] = enriched[available_vitamin_cols].fillna(0).sum(axis=1)
             enriched['vitamin_density'] = enriched.apply(
@@ -229,25 +278,21 @@ def enrich_and_merge():
         else:
             enriched['total_vitamins'] = 0
             enriched['vitamin_density'] = 0
-        
-        # Kategorisiere: raw vs. processed
-        # Einfache Heuristik: USDA = raw, OpenFoodFacts = processed
+
         print("🏷️  Categorizing food types...")
         enriched['food_type'] = enriched['source'].apply(
             lambda x: 'raw' if x == 'USDA' else 'processed'
         )
-        
-        # Konvertiere food_id zu String, um gemischte Typen zu vermeiden
+
         print("🔄 Converting food_id to string for Parquet compatibility...")
         enriched['food_id'] = enriched['food_id'].astype(str)
-        
-        # Speichere angereichertes Dataset
+
         print(f"💾 Saving enriched dataset to {STAGING_ENRICHED}...")
         enriched.to_parquet(STAGING_ENRICHED, index=False)
         print(f"✅ Enriched dataset created: {len(enriched)} records saved to {STAGING_ENRICHED}")
         print(f"   - USDA (raw): {len(usda)} records")
         print(f"   - OpenFoodFacts (processed): {len(off)} records")
-        
+
     except Exception as e:
         print(f"❌ ERROR in enrich_and_merge: {e}")
         import traceback

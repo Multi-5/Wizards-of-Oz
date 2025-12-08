@@ -20,6 +20,20 @@ STAGING_DIR = '/opt/airflow/data/staging'
 PRODUCTION_DIR = '/opt/airflow/data/production'
 ENRICHED_FILE = os.path.join(STAGING_DIR, 'enriched_food_data.parquet')
 
+
+def _ensure_directories(paths: set[str]) -> None:
+    for path in paths:
+        if not path:
+            continue
+        os.makedirs(path, exist_ok=True)
+
+
+_ensure_directories({
+    STAGING_DIR,
+    PRODUCTION_DIR,
+    os.path.dirname(ENRICHED_FILE),
+})
+
 # Default args
 default_args = {
     'owner': 'wizards_of_oz',

@@ -6,6 +6,18 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 
+DATA_DIRECTORIES = {"/opt/airflow/data"}
+
+
+def _ensure_directories(paths: set[str]) -> None:
+    for path in paths:
+        if not path:
+            continue
+        os.makedirs(path, exist_ok=True)
+
+
+_ensure_directories(DATA_DIRECTORIES)
+
 
 def redis_smoke_test():
     import redis

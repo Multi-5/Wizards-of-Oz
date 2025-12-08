@@ -1,3 +1,4 @@
+import os
 import pendulum
 from datetime import timedelta
 
@@ -15,6 +16,21 @@ SRC_PARQUET = "/opt/airflow/data/data_unclean/food.parquet"
 # Ziel: Landing Zone
 DST_JSON = "/opt/airflow/data/landing/FoodData_Central_foundation_food_json_2025-04-24.json"
 DST_PARQUET = "/opt/airflow/data/landing/food.parquet"
+
+
+def _ensure_directories(paths: set[str]) -> None:
+    for path in paths:
+        if not path:
+            continue
+        os.makedirs(path, exist_ok=True)
+
+
+_ensure_directories({
+    os.path.dirname(SRC_JSON),
+    os.path.dirname(SRC_PARQUET),
+    os.path.dirname(DST_JSON),
+    os.path.dirname(DST_PARQUET),
+})
 
 ## If the files are not present in /opt/airflow/data inside the container, ensure docker-compose mounts the host ./data folder to /opt/airflow/data in the container.
 ## If the host data is outside the airflow folder, update the docker-compose.yml volumes section accordingly.
