@@ -9,6 +9,8 @@ from neo4j import GraphDatabase
 import redis
 
 DATA_FILE = "/opt/airflow/data/production/enriched_food_data_latest.parquet"
+MAX_RECORDS_PER_SOURCE = int(os.environ.get("GRAPH_SAMPLE_PER_SOURCE", "50"))
+MAX_TOTAL_RECORDS = int(os.environ.get("GRAPH_SAMPLE_TOTAL", "200"))
 
 
 def _ensure_directories(paths: set[str]) -> None:
@@ -19,6 +21,28 @@ def _ensure_directories(paths: set[str]) -> None:
 
 
 _ensure_directories({os.path.dirname(DATA_FILE)})
+
+
+def _select_balanced_sample(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a sample ensuring each source is represented."""
+    if df.empty:
+        return df
+    if 'source' not in df.columns:
+        return df.head(MAX_TOTAL_RECORDS).copy()
+
+    samples: list[pd.DataFrame] = []
+    for source, group in df.groupby('source'):
+        if group.empty:
+            continue
+        samples.append(group.head(MAX_RECORDS_PER_SOURCE))
+
+    if not samples:
+        return df.head(MAX_TOTAL_RECORDS).copy()
+
+    sample_df = pd.concat(samples, ignore_index=True)
+    if MAX_TOTAL_RECORDS:
+        sample_df = sample_df.head(MAX_TOTAL_RECORDS)
+    return sample_df
 
 
 def load_food_data_to_neo4j():
@@ -35,8 +59,12 @@ def load_food_data_to_neo4j():
     df = pd.read_parquet(DATA_FILE)
     print(f"Loaded {len(df)} food items")
     
-    # Sample 100 items to keep graph manageable
-    df_sample = df.head(100).copy()
+    # Sample records while keeping both USDA and OpenFoodFacts represented
+    df_sample = _select_balanced_sample(df)
+    print(
+        "Sampling graph data",
+        {src: len(group) for src, group in df_sample.groupby('source', dropna=False)}
+    )
     
     with driver.session() as session:
         # Clear existing data
