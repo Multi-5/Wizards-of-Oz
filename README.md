@@ -8,6 +8,9 @@ Students: **Robert Michel, Stefan Severin**
 
 ### Abstract
 
+### Introduction
+## Pipeline
+
 ## Datasets Description 
 
 ## Ingestion:
@@ -105,15 +108,17 @@ ORDER BY c.category_name, s.source_name;```
   | Adminer  |  http://localhost:8081/ |
   | Airflow  | http://localhost:8082/  |
   | Neo4j  | http://localhost:7474/browser/  |
-
+6. Credentials are found in the `.env` file 
+> [!NOTE]
+> In the adminer application the server is named "postgres" not "db".
 
 ## Note for Students
 
-* Clone the created repository offline;
-* Add your name and surname into the Readme file and your teammates as collaborators
-* Complete the field above after project is approved
-* Make any changes to your repository according to the specific assignment;
-* Ensure code reproducibility and instructions on how to replicate the results;
-* Add an open-source license, e.g., Apache 2.0;
-* README is automatically converted into pdf
+* [x] Clone the created repository offline;
+* [x] Add your name and surname into the Readme file and your teammates as collaborators
+* [x] Complete the field above after project is approved
+* [ ] Make any changes to your repository according to the specific assignment;
+* [ ] Ensure code reproducibility and instructions on how to replicate the results;
+* [x] Add an open-source license, e.g., Apache 2.0;
+* [ ] README is automatically converted into pdf
 
