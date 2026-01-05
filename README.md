@@ -1,12 +1,3 @@
-### Abstract
-
-This README describes the ETL pipeline we implemented as part of the OT7 Data Engineering project (2025/2026). The pipeline ingests two main sources (OpenFoodFacts and USDA Foundation Foods), performs deterministic cleaning and unit normalization, produces a merged and enriched dataset, and exposes analytics-ready artifacts in a Postgres warehouse. We also provide an optional Neo4j-based graph for relationship exploration. The text below explains what we actually did, which functions implement each step, and why we made the choices we did.
-
-### Introduction
-
-This project was built during the course to practise end-to-end data engineering: collecting heterogeneous public datasets, making them analysis-ready, and designing small analytical artifacts to answer domain-specific questions. We intentionally kept the stack simple—Airflow for orchestration, Pandas/pyarrow for transformation, Postgres for warehousing and Neo4j for graph exploration—so the code is readable and reproducible on a laptop with Docker.
-
-The implementation is pragmatic: each core operation is written as a small Python function inside the Airflow DAGs so reviewers can run and inspect the steps easily. Where possible we document the exact function names used in the DAGs to make it simple to find the code that performs a transformation.
 # OT7 - Foundation of Data Engineering - 2025/2026
 
 ![Insalogo](./images/logo-insa_0.png)
@@ -14,6 +5,17 @@ The implementation is pragmatic: each core operation is written as a small Pytho
 Project [DATA Engineering](https://www.riccardotommasini.com/courses/dataeng-insa-ot/) is provided by [INSA Lyon](https://www.insa-lyon.fr/).
 
 Students: **Ahmed MANSOUR, Robert MICHEL, Stefan SEVERIN**
+
+
+## Abstract
+
+This README describes the ETL pipeline we implemented as part of the OT7 Data Engineering project (2025/2026). The pipeline ingests two main sources (OpenFoodFacts and USDA Foundation Foods), performs deterministic cleaning and unit normalization, produces a merged and enriched dataset, and exposes analytics-ready artifacts in a Postgres warehouse. We also provide an optional Neo4j-based graph for relationship exploration. The text below explains what we actually did, which functions implement each step, and why we made the choices we did.
+
+## Introduction
+
+This project was built during the course to practise end-to-end data engineering: collecting heterogeneous public datasets, making them analysis-ready, and designing small analytical artifacts to answer domain-specific questions. We intentionally kept the stack simple—Airflow for orchestration, Pandas/pyarrow for transformation, Postgres for warehousing and Neo4j for graph exploration—so the code is readable and reproducible on a laptop with Docker.
+
+The implementation is pragmatic: each core operation is written as a small Python function inside the Airflow DAGs so reviewers can run and inspect the steps easily. Where possible we document the exact function names used in the DAGs to make it simple to find the code that performs a transformation.
 
 ## Pipeline
 ![Pipeline](./images/FoD_Pipeline.png)
@@ -92,9 +94,8 @@ The `backup_to_production()` function ensures data persistence and versioning by
 
 ### Queries 
 1. How does the total nutrient content (protein, magnesium, vitamins) of a homemade dish compare to that of a premade product?
-  <details>
-  <summary>SQL Query</summary>
-  ```SELECT
+```
+SELECT
     c.category_name,
     s.source_name,
     COUNT(*)                           AS food_count,
@@ -111,13 +112,12 @@ JOIN dim_category c ON f.category_key = c.category_key
 JOIN dim_source   s ON f.source_key   = s.source_key
 WHERE s.source_name IN ('USDA','OpenFoodFacts')
 GROUP BY c.category_name, s.source_name
-ORDER BY c.category_name, s.source_name;```
+ORDER BY c.category_name, s.source_name;
+```
   
-  </details>
 2. Which food categories show the largest fat content differences between raw and processed versions?
-  <details>
-  <summary>SQL Query</summary>
-  ```SELECT c.category_name,
+  ```
+SELECT c.category_name,
        AVG(CASE WHEN s.source_name = 'USDA' THEN f.fat_g END) AS avg_fat_usda,
        AVG(CASE WHEN s.source_name = 'OpenFoodFacts' THEN f.fat_g END) AS avg_fat_off,
        (AVG(CASE WHEN s.source_name = 'OpenFoodFacts' THEN f.fat_g END) - 
@@ -133,14 +133,13 @@ HAVING COUNT(CASE WHEN s.source_name = 'USDA' THEN 1 END) > 0
                AVG(CASE WHEN s.source_name = 'USDA' THEN f.fat_g END)) > 0
 ORDER BY ABS(AVG(CASE WHEN s.source_name = 'OpenFoodFacts' THEN f.fat_g END) - 
              AVG(CASE WHEN s.source_name = 'USDA' THEN f.fat_g END)) DESC
-LIMIT 10;```
-  
-  </details>
+LIMIT 10;
+```
 
 3.How does sodium (salt) content differ between homemade and commercial dishes of the same type?
-<details>
-  <summary>SQL Query</summary>
-  ```SELECT
+
+  ```
+SELECT
     c.category_name AS dish_type,
     s.source_name   AS dataset,
     COUNT(*)        AS items,
@@ -153,9 +152,9 @@ JOIN dim_source   s ON f.source_key   = s.source_key
 WHERE s.source_name IN ('USDA','OpenFoodFacts')
 GROUP BY c.category_name, s.source_name
 HAVING AVG(f.sodium_mg) > 0
-ORDER BY c.category_name, s.source_name;```
+ORDER BY c.category_name, s.source_name;
+  ```
   
-  </details>
 
 
 ## Foodgraph
@@ -172,10 +171,51 @@ Nodes and relationships (example):
 - (Product)-[:CONTAINS]->(Ingredient)
 - (Product)-[:BELONGS_TO]->(Category)
 
-
 Notes
 
 - The Neo4j instance is optional for main analytics; it is used for exploration and visualization.
+
+### Queries 
+1. All Foods with Categories
+```
+MATCH (f:Food)-[:IN_CATEGORY]->(c:Category)
+RETURN f, c 
+```
+2. Nutrient Comparison (Homemade vs Premade): </br>
+How does nutrient content compare between raw (USDA) and processed (OpenFoodFacts) foods?
+```
+MATCH (f:Food)-[:FROM_SOURCE]->(s:Source)
+                WHERE f.energy_kcal IS NOT NULL
+                RETURN 
+                    s.name as source,
+                    f.food_type as food_type,
+                    count(f) as food_count,
+                    round(avg(f.protein_g), 2) as avg_protein_g,
+                    round(avg(f.fat_g), 2) as avg_fat_g,
+                    round(avg(f.carbohydrate_g), 2) as avg_carb_g,
+                    round(avg(f.total_vitamins), 2) as avg_total_vitamins,
+                    round(avg(f.vitamin_density), 4) as avg_vitamin_density
+                ORDER BY source, food_type
+```
+3. Top Contributors to Calories, Fat, Sugar: </br>
+Which categories contribute most to calories, fat, and sugar?
+```
+MATCH (f:Food)-[:IN_CATEGORY]->(c:Category)
+                WHERE f.energy_kcal IS NOT NULL AND f.energy_kcal > 0
+                WITH c.name as category,
+                     sum(f.energy_kcal) as total_calories,
+                     sum(f.fat_g) as total_fat,
+                     sum(f.sugar_g) as total_sugar,
+                     count(f) as food_count
+                RETURN category, food_count,
+                       round(total_calories, 0) as total_calories,
+                       round(total_fat, 1) as total_fat_g,
+                       round(total_sugar, 1) as total_sugar_g,
+                       round(total_calories / food_count, 1) as avg_calories_per_food
+                ORDER BY avg_calories_per_food DESC
+                LIMIT 10
+```
+
 
 ## Requirements
 
