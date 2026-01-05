@@ -6,6 +6,18 @@ from airflow.operators.python import PythonOperator
 import pandas as pd
 import json
 
+"""
+Staging pipeline DAG
+
+This module cleans USDA JSON and OpenFoodFacts parquet inputs, normalizes
+nutrient fields, and produces a harmonized enriched Parquet file for
+downstream analysis. Chunked reads are used for large OpenFoodFacts
+files to keep memory usage bounded.
+
+All console/log messages are plain text (no emoji) to keep CI/logs
+clean and machine-friendly.
+"""
+
 START_DATE = pendulum.datetime(2024, 1, 1, tz="UTC")
 
 # Paths
@@ -35,7 +47,16 @@ _ensure_directories({
 
 def clean_usda_data():
     """
-    Loads USDA JSON from Landing Zone, cleans and normalizes the data.
+    Load USDA JSON from the landing zone, normalize and flatten nutrient
+    information, perform basic cleaning and persist the cleaned dataset
+    as Parquet in the staging area.
+
+    Steps:
+    - Parse FoundationFoods entries
+    - Extract nutrient dictionary and flatten selected nutrients
+    - Drop duplicates and empty descriptions
+    - Normalize text fields and fill numeric nulls with 0
+    - Persist to `STAGING_USDA`
     """
     with open(LANDING_JSON, 'r') as f:
         data = json.load(f)
@@ -104,15 +125,17 @@ def clean_usda_data():
     df['category'] = df['category'].str.lower().str.strip()
     df['description'] = df['description'].str.lower().str.strip()
     
-    # Save to Staging
+    # Save cleaned USDA data to staging
     df.to_parquet(STAGING_USDA, index=False)
-    print(f"✅ USDA data cleaned: {len(df)} records saved to {STAGING_USDA}")
+    print(f"USDA data cleaned: {len(df)} records saved to {STAGING_USDA}")
 
 
 def clean_openfoodfacts_data():
     """
-    Loads OpenFoodFacts Parquet from Landing Zone, cleans and normalizes the data.
-    Uses chunking + streaming write to avoid memory issues.
+    Load OpenFoodFacts Parquet from the landing zone, clean and normalize
+    the fields, and write a streaming Parquet output to staging. This
+    function reads the large Parquet file in chunks to keep memory use
+    bounded and writes using `pyarrow.ParquetWriter`.
     """
     import pyarrow as pa
     import pyarrow.parquet as pq
@@ -289,8 +312,9 @@ def clean_openfoodfacts_data():
 
     parquet_file = pq.ParquetFile(LANDING_PARQUET)
     available_columns = [col for col in relevant_cols if col in parquet_file.schema_arrow.names]
+    # Number of rows to read per iteration to avoid excessive memory
     chunk_size = 10000
-    print(f"📊 Reading {parquet_file.metadata.num_rows} rows in chunks of {chunk_size:,}...")
+    print(f"Reading {parquet_file.metadata.num_rows} rows in chunks of {chunk_size:,}...")
 
     temp_output = f"{STAGING_OFF}.tmp"
     if os.path.exists(temp_output):
@@ -409,10 +433,8 @@ def clean_openfoodfacts_data():
         empty_df = pd.DataFrame(columns=list(rename_map.values()) + ['source'])
         empty_df.to_parquet(STAGING_OFF, index=False)
 
-    print(
-        f"✅ OpenFoodFacts data cleaned: {total_kept} records saved to {STAGING_OFF} "
-        f"(processed {total_rows} rows)"
-    )
+    # Log completion of OpenFoodFacts cleaning without emoji
+    print(f"OpenFoodFacts data cleaned: {total_kept} records saved to {STAGING_OFF} (processed {total_rows} rows)")
 
 
 def enrich_and_merge():
@@ -421,11 +443,13 @@ def enrich_and_merge():
     an enriched dataset for analysis.
     """
     try:
-        print("📥 Loading USDA data...")
+        # Load cleaned USDA dataset from staging
+        print("Loading USDA data...")
         usda = pd.read_parquet(STAGING_USDA)
         print(f"   USDA: {len(usda)} rows, {len(usda.columns)} columns")
 
-        print("📥 Loading OpenFoodFacts data...")
+        # Load cleaned OpenFoodFacts dataset from staging (possibly limited by env var)
+        print("Loading OpenFoodFacts data...")
         if MAX_OPENFOODFACTS_ROWS > 0:
             import pyarrow.parquet as pq
 
@@ -448,15 +472,14 @@ def enrich_and_merge():
             else:
                 off = pd.DataFrame()
 
-            print(
-                f"   OpenFoodFacts: {len(off)} rows used (total {total_off}, limit {MAX_OPENFOODFACTS_ROWS})"
-            )
+            print(f"   OpenFoodFacts: {len(off)} rows used (total {total_off}, limit {MAX_OPENFOODFACTS_ROWS})")
         else:
             off = pd.read_parquet(STAGING_OFF)
             print(f"   OpenFoodFacts: {len(off)} rows, {len(off.columns)} columns")
 
+        # Ensure both dataframes have the same set of columns by adding missing ones
         all_cols = set(usda.columns).union(set(off.columns))
-        print(f"🔄 Harmonizing {len(all_cols)} unique columns...")
+        print(f"Harmonizing {len(all_cols)} unique columns...")
 
         for col in all_cols:
             if col not in usda.columns:
@@ -467,11 +490,13 @@ def enrich_and_merge():
         usda = usda[sorted(usda.columns)]
         off = off[sorted(off.columns)]
 
-        print("🔗 Merging datasets...")
+        # Concatenate USDA and OpenFoodFacts into a single enriched dataframe
+        print("Merging datasets...")
         enriched = pd.concat([usda, off], ignore_index=True)
         print(f"   Combined: {len(enriched)} rows")
 
-        print("🧮 Computing vitamin density...")
+        # Compute vitamin-related derived fields used in analytics (e.g., vitamin density)
+        print("Computing vitamin density...")
         vitamin_cols = ['vitamin_c_mg', 'vitamin_a_ug', 'vitamin_d_ug', 'vitamin_e_mg']
         available_vitamin_cols = [col for col in vitamin_cols if col in enriched.columns]
 
@@ -485,22 +510,26 @@ def enrich_and_merge():
             enriched['total_vitamins'] = 0
             enriched['vitamin_density'] = 0
 
-        print("🏷️  Categorizing food types...")
+        # Classify each row as 'raw' (USDA) or 'processed' (OpenFoodFacts)
+        print("Categorizing food types...")
         enriched['food_type'] = enriched['source'].apply(
             lambda x: 'raw' if x == 'USDA' else 'processed'
         )
 
-        print("🔄 Converting food_id to string for Parquet compatibility...")
+        # Convert primary key to string to ensure Parquet compatibility
+        print("Converting food_id to string for Parquet compatibility...")
         enriched['food_id'] = enriched['food_id'].astype(str)
 
-        print(f"💾 Saving enriched dataset to {STAGING_ENRICHED}...")
+        # Persist enriched dataset to staging
+        print(f"Saving enriched dataset to {STAGING_ENRICHED}...")
         enriched.to_parquet(STAGING_ENRICHED, index=False)
-        print(f"✅ Enriched dataset created: {len(enriched)} records saved to {STAGING_ENRICHED}")
+        print(f"Enriched dataset created: {len(enriched)} records saved to {STAGING_ENRICHED}")
         print(f"   - USDA (raw): {len(usda)} records")
         print(f"   - OpenFoodFacts (processed): {len(off)} records")
 
     except Exception as e:
-        print(f"❌ ERROR in enrich_and_merge: {e}")
+        # Log the error (no emoji) and re-raise for Airflow to capture
+        print(f"ERROR in enrich_and_merge: {e}")
         import traceback
         traceback.print_exc()
         raise

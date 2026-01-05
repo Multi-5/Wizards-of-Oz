@@ -179,13 +179,14 @@ def create_star_schema():
     CREATE INDEX idx_fact_source_key ON fact_food_nutrition(source_key);
     """
     
-    print("🏗️  Creating Star Schema...")
+    # Informational log: creating star schema in the warehouse
+    print("Creating Star Schema...")
     cursor.execute(drop_sql)
     cursor.execute(create_dimensions_sql)
     conn.commit()
     cursor.close()
     conn.close()
-    print("✅ Star Schema created successfully!")
+    print("Star Schema created successfully!")
 
 
 def load_dimensions():
@@ -198,7 +199,8 @@ def load_dimensions():
     # Read enriched data
     df = pd.read_parquet(ENRICHED_FILE)
     
-    print(f"📊 Loading {len(df)} records into dimension tables...")
+    # Loading dimension data into PostgreSQL from staging parquet
+    print(f"Loading {len(df)} records into dimension tables...")
     
     # Load dim_category
     categories = df[['category']].drop_duplicates().dropna()
@@ -210,7 +212,7 @@ def load_dimensions():
             (row['category'], row['category_type'])
         )
     
-    print(f"✅ Loaded {len(categories)} categories")
+    print(f"Loaded {len(categories)} categories")
     
     # Load dim_food
     foods = df[['food_id', 'description', 'brands']].drop_duplicates()
@@ -224,8 +226,8 @@ def load_dimensions():
     conn.commit()
     cursor.close()
     conn.close()
-    print(f"✅ Loaded {len(foods)} food items")
-    print(f"✅ Dimensions loaded successfully!")
+    print(f"Loaded {len(foods)} food items")
+    print(f"Dimensions loaded successfully!")
 
 
 def load_fact_table():
@@ -238,7 +240,8 @@ def load_fact_table():
     # Read enriched data
     df = pd.read_parquet(ENRICHED_FILE)
     
-    print(f"📊 Loading {len(df)} records into fact table...")
+    # Loading fact table records (nutritional measures) into warehouse
+    print(f"Loading {len(df)} records into fact table...")
     
     # Get foreign keys
     for idx, row in df.iterrows():
@@ -287,7 +290,7 @@ def load_fact_table():
     conn.commit()
     cursor.close()
     conn.close()
-    print(f"✅ Fact table loaded successfully!")
+    print(f"Fact table loaded successfully!")
 
 
 def create_data_marts():
@@ -382,12 +385,13 @@ def create_data_marts():
     JOIN dim_source s ON f.source_key = s.source_key;
     """
     
-    print("📊 Creating Data Marts (Analytical Views)...")
+    # Create analytical views (data marts) for the research questions
+    print("Creating Data Marts (Analytical Views)...")
     cursor.execute(views_sql)
     conn.commit()
     cursor.close()
     conn.close()
-    print("✅ Data Marts created successfully!")
+    print("Data Marts created successfully!")
 
 
 def backup_to_production():
@@ -408,7 +412,7 @@ def backup_to_production():
     latest_file = os.path.join(PRODUCTION_DIR, 'enriched_food_data_latest.parquet')
     shutil.copy2(ENRICHED_FILE, latest_file)
     
-    print(f"✅ Data backed up to production: {production_file}")
+    print(f"Data backed up to production: {production_file}")
 
 
 # Define Tasks
