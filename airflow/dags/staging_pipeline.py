@@ -114,7 +114,7 @@ def clean_openfoodfacts_data():
     import pyarrow.parquet as pq
 
     relevant_cols = [
-        'code', 'product_name', 'brands', 'categories',
+        'code', 'product_name', 'brands', 'categories_tags',
         'energy-kcal_100g', 'proteins_100g', 'fat_100g',
         'carbohydrates_100g', 'sugars_100g', 'fiber_100g',
         'salt_100g', 'sodium_100g', 'nutrition-score-fr_100g',
@@ -125,6 +125,149 @@ def clean_openfoodfacts_data():
         'code': 'food_id',
         'product_name': 'description',
         'main_category': 'category'
+    }
+
+    # Mapping from OpenFoodFacts categories to USDA category names
+    category_mapping = {
+        # Sweets and snacks
+        'en:snacks': 'sweets',
+        'en:sweet-snacks': 'sweets',
+        'en:cocoa-and-its-products': 'sweets',
+        'en:confectioneries': 'sweets',
+        'en:chocolates': 'sweets',
+        'en:candies': 'sweets',
+        'en:biscuits-and-cakes': 'baked products',
+        'en:cakes': 'baked products',
+        'en:biscuits': 'baked products',
+        'en:cookies': 'baked products',
+        'en:ice-creams': 'sweets',
+        'en:desserts': 'sweets',
+        'en:pies': 'baked products',
+        'en:pastries': 'baked products',
+        'en:muffins': 'baked products',
+        'en:donuts': 'baked products',
+
+        # Fruits and vegetables
+        'en:plant-based-foods': 'vegetables and vegetable products',
+        'en:plant-based-foods-and-beverages': 'vegetables and vegetable products',
+        'en:cereals-and-potatoes': 'cereal grains and pasta',
+        'en:fruits-and-vegetables-based-foods': 'fruits and fruit juices',
+        'en:fruits': 'fruits and fruit juices',
+        'en:vegetables': 'vegetables and vegetable products',
+        'en:apples': 'fruits and fruit juices',
+        'en:bananas': 'fruits and fruit juices',
+        'en:oranges': 'fruits and fruit juices',
+        'en:berries': 'fruits and fruit juices',
+        'en:citrus': 'fruits and fruit juices',
+        'en:tropical-fruits': 'fruits and fruit juices',
+        'en:potatoes': 'vegetables and vegetable products',
+        'en:carrots': 'vegetables and vegetable products',
+        'en:tomatoes': 'vegetables and vegetable products',
+        'en:onions': 'vegetables and vegetable products',
+        'en:lettuce': 'vegetables and vegetable products',
+        'en:spinach': 'vegetables and vegetable products',
+        'en:broccoli': 'vegetables and vegetable products',
+        'en:peppers': 'vegetables and vegetable products',
+
+        # Beverages
+        'en:beverages': 'beverages',
+        'en:carbonated-drinks': 'beverages',
+        'en:sodas': 'beverages',
+        'en:juices': 'beverages',
+        'en:fruit-juices': 'beverages',
+        'en:vegetable-juices': 'beverages',
+        'en:waters': 'beverages',
+        'en:teas': 'beverages',
+        'en:coffees': 'beverages',
+        'en:milks': 'beverages',
+        'en:smoothies': 'beverages',
+        'en:energy-drinks': 'beverages',
+
+        # Meats and proteins
+        'en:meats': 'beef products',
+        'en:pork': 'pork products',
+        'en:poultry': 'poultry products',
+        'en:chicken': 'poultry products',
+        'en:turkey': 'poultry products',
+        'en:beef': 'beef products',
+        'en:lamb': 'lamb, veal, and game products',
+        'en:veal': 'lamb, veal, and game products',
+        'en:game': 'lamb, veal, and game products',
+        'en:fish': 'finfish and shellfish products',
+        'en:seafood': 'finfish and shellfish products',
+        'en:salmon': 'finfish and shellfish products',
+        'en:tuna': 'finfish and shellfish products',
+        'en:shrimp': 'finfish and shellfish products',
+        'en:eggs': 'dairy and egg products',
+        'en:sausages': 'sausages and luncheon meats',
+        'en:luncheon-meats': 'sausages and luncheon meats',
+        'en:hams': 'sausages and luncheon meats',
+        'en:bacons': 'sausages and luncheon meats',
+
+        # Dairy
+        'en:dairy': 'dairy and egg products',
+        'en:cheeses': 'dairy and egg products',
+        'en:yogurts': 'dairy and egg products',
+        'en:butters': 'dairy and egg products',
+        'en:creams': 'dairy and egg products',
+        'en:milks': 'dairy and egg products',
+
+        # Grains and pasta
+        'en:pastas': 'cereal grains and pasta',
+        'en:noodles': 'cereal grains and pasta',
+        'en:rices': 'cereal grains and pasta',
+        'en:breads': 'baked products',
+        'en:cereals': 'cereal grains and pasta',
+        'en:oats': 'cereal grains and pasta',
+        'en:wheats': 'cereal grains and pasta',
+
+        # Nuts and seeds
+        'en:nuts': 'nut and seed products',
+        'en:seeds': 'nut and seed products',
+        'en:almonds': 'nut and seed products',
+        'en:walnuts': 'nut and seed products',
+        'en:peanuts': 'nut and seed products',
+        'en:sunflower-seeds': 'nut and seed products',
+        'en:pumpkin-seeds': 'nut and seed products',
+
+        # Legumes
+        'en:legumes': 'legumes and legume products',
+        'en:beans': 'legumes and legume products',
+        'en:lentils': 'legumes and legume products',
+        'en:peas': 'legumes and legume products',
+        'en:chickpeas': 'legumes and legume products',
+
+        # Fats and oils
+        'en:fats': 'fats and oils',
+        'en:oils': 'fats and oils',
+        'en:olive-oils': 'fats and oils',
+        'en:sunflower-oils': 'fats and oils',
+        'en:coconut-oils': 'fats and oils',
+        'en:butters': 'fats and oils',
+
+        # Soups and sauces
+        'en:soups': 'soups, sauces, and gravies',
+        'en:sauces': 'soups, sauces, and gravies',
+        'en:gravies': 'soups, sauces, and gravies',
+        'en:salad-dressings': 'soups, sauces, and gravies',
+        'en:ketchups': 'soups, sauces, and gravies',
+        'en:mustards': 'soups, sauces, and gravies',
+
+        # Spices and herbs
+        'en:spices': 'spices and herbs',
+        'en:herbs': 'spices and herbs',
+        'en:peppers': 'spices and herbs',
+        'en:salts': 'spices and herbs',
+        'en:sugars': 'spices and herbs',
+
+        # Restaurant foods
+        'en:restaurant-foods': 'restaurant foods',
+        'en:fast-foods': 'restaurant foods',
+        'en:pizzas': 'restaurant foods',
+        'en:burgers': 'restaurant foods',
+        'en:sandwiches': 'restaurant foods',
+
+        # Add more as needed
     }
 
     def extract_nutrients(nutrient_list):
@@ -167,6 +310,20 @@ def clean_openfoodfacts_data():
 
             df_chunk['product_name'] = df_chunk['product_name'].apply(extract_product_name)
 
+        # Map categories_tags to USDA categories
+        if 'categories_tags' in df_chunk.columns:
+            def map_categories(categories):
+                import numpy as np
+                if not isinstance(categories, (list, np.ndarray)):
+                    return None
+                for cat in categories:
+                    mapped = category_mapping.get(cat)
+                    if mapped:
+                        return mapped
+                return None
+
+            df_chunk['mapped_category'] = df_chunk['categories_tags'].apply(map_categories)
+
         # Extract nutrients from nutriments column
         if 'nutriments' in df_chunk.columns:
             df_chunk['nutrients_extracted'] = df_chunk['nutriments'].apply(extract_nutrients)
@@ -198,14 +355,23 @@ def clean_openfoodfacts_data():
         df_chunk = df_chunk.rename(columns=rename_map)
         df_chunk['source'] = 'OpenFoodFacts'
 
+        # Ensure category column exists
+        if 'category' not in df_chunk.columns:
+            df_chunk['category'] = None
+
+        # Use mapped category if available
+        if 'mapped_category' in df_chunk.columns:
+            df_chunk['category'] = df_chunk['mapped_category'].fillna(df_chunk['category'])
+            df_chunk = df_chunk.drop(columns=['mapped_category'])
+
         if 'description' not in df_chunk.columns:
             df_chunk['description'] = None
 
-        for fallback_col in ('brands', 'categories'):
+        for fallback_col in ('brands', 'categories_tags'):
             if fallback_col in df_chunk.columns:
                 df_chunk['description'] = df_chunk['description'].fillna(df_chunk[fallback_col])
 
-        df_chunk['description'] = df_chunk['description'].fillna('unknown product')
+        df_chunk['description'] = df_chunk['description'].fillna('unknown product').astype(str)
 
         numeric_cols = df_chunk.select_dtypes(include=['float64', 'int64']).columns
         df_chunk[numeric_cols] = df_chunk[numeric_cols].fillna(0)
