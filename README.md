@@ -24,3 +24,25 @@ Students: **[To be assigned]**
 * Add an open-source license, e.g., Apache 2.0;
 * README is automatically converted into pdf
 
+
+## Local setup
+
+The project ships with an Apache Airflow + Postgres + Neo4j stack defined in `airflow/docker-compose.yml`.
+
+1. Ensure Docker Desktop (or a compatible Docker Engine) is running.
+2. From the `airflow/` directory run `docker compose up --build` to start all services.
+3. Visit http://localhost:8082 to access the Airflow UI (default credentials `admin`/`admin`).
+
+### Notes on the metadata database
+
+* The Airflow container expects a Postgres database named `airflow`. A bootstrap script under `airflow/db/init/00-create-databases.sql` now creates both the `airflow` metadata database and the `warehouse` analytics database the first time the Postgres volume is initialized.
+* If you previously ran the stack before this script existed, remove the old Postgres volume so the initializer can run:
+
+```bash
+cd airflow
+docker compose down -v
+docker compose up --build
+```
+
+This guarantees every teammate starts with the same schema state and avoids the `database "airflow" does not exist` error during `airflow db check`.
+
