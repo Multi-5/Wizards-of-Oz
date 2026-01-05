@@ -1,0 +1,9 @@
+/airflow/data/landing/
+/airflow/data/staging/
+/airflow/data/data_unclean/food.parquet
+/airflow/data/production/
+*.parquet
+/airflow/logs/
+/data/food_data/
+/airflow/dags/__pycache__/
+/airflow/plugins/__pycache__/
