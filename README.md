@@ -85,6 +85,10 @@ Design choices
 - Store the analytical tables in Postgres (`warehouse` database) to leverage SQL for aggregation and joins.
 - Use Neo4j for product-ingredient relationships and category co-occurrence graphs. Neo4j is optional and intended for exploratory analysis.
 
+Data versioning and backup
+
+The `backup_to_production()` function ensures data persistence and versioning by creating timestamped copies of the enriched dataset in the production zone. Each pipeline run generates a uniquely named backup file (e.g., `enriched_food_data_20260105_143022.parquet`) while maintaining a "latest" version for immediate access by downstream processes. This approach provides both historical data recovery capabilities and ensures the most recent processed data is always readily available.
+
 
 ### Queries 
 1. How does the total nutrient content (protein, magnesium, vitamins) of a homemade dish compare to that of a premade product?
