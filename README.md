@@ -16,7 +16,7 @@ Project [DATA Engineering](https://www.riccardotommasini.com/courses/dataeng-ins
 Students: **Ahmed MANSOUR, Robert MICHEL, Stefan SEVERIN**
 
 ## Pipeline
-
+![Pipeline](./images/FoD_Pipeline.png)
 
 ## Datasets Description 
 
