@@ -5,3 +5,5 @@
 *.parquet
 /airflow/logs/
 /data/food_data/
+/airflow/dags/__pycache__/
+/airflow/plugins/__pycache__/
