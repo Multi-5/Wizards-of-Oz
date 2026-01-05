@@ -8,7 +8,7 @@ import json
 
 START_DATE = pendulum.datetime(2024, 1, 1, tz="UTC")
 
-# Pfade
+# Paths
 LANDING_JSON = "/opt/airflow/data/landing/FoodData_Central_foundation_food_json_2025-04-24.json"
 LANDING_PARQUET = "/opt/airflow/data/landing/food.parquet"
 STAGING_USDA = "/opt/airflow/data/staging/usda_cleaned.parquet"
@@ -35,7 +35,7 @@ _ensure_directories({
 
 def clean_usda_data():
     """
-    Lädt USDA JSON aus Landing Zone, bereinigt und normalisiert die Daten.
+    Loads USDA JSON from Landing Zone, cleans and normalizes the data.
     """
     with open(LANDING_JSON, 'r') as f:
         data = json.load(f)
@@ -49,7 +49,7 @@ def clean_usda_data():
         description = food.get('description')
         category = food.get('foodCategory', {}).get('description', 'Unknown')
         
-        # Extrahiere Nährstoffe
+        # Extract nutrients
         nutrients = {}
         for nutrient in food.get('foodNutrients', []):
             nutrient_name = nutrient.get('nutrient', {}).get('name')
@@ -62,7 +62,7 @@ def clean_usda_data():
                     'unit': nutrient_unit
                 }
         
-        # Erstelle flache Struktur für wichtige Nährstoffe
+        # Create flat structure for important nutrients
         record = {
             'source': 'USDA',
             'food_id': food_id,
@@ -85,30 +85,30 @@ def clean_usda_data():
     
     df = pd.DataFrame(records)
     
-    # Datenbereinigung
-    # 1. Entferne Duplikate basierend auf food_id
+    # Data cleaning
+    # 1. Remove duplicates based on food_id
     df = df.drop_duplicates(subset=['food_id'], keep='first')
     
-    # 2. Entferne Zeilen ohne Beschreibung
+    # 2. Remove rows without description
     df = df.dropna(subset=['description'])
     
-    # 3. Fülle fehlende numerische Werte mit 0 (konservativ)
+    # 3. Fill missing numeric values with 0 (conservative)
     numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
     df[numeric_cols] = df[numeric_cols].fillna(0)
     
-    # 4. Normalisiere Kategorien (lowercase, strip)
+    # 4. Normalize categories (lowercase, strip)
     df['category'] = df['category'].str.lower().str.strip()
     df['description'] = df['description'].str.lower().str.strip()
     
-    # Speichere in Staging
+    # Save to Staging
     df.to_parquet(STAGING_USDA, index=False)
     print(f"✅ USDA data cleaned: {len(df)} records saved to {STAGING_USDA}")
 
 
 def clean_openfoodfacts_data():
     """
-    Lädt OpenFoodFacts Parquet aus Landing Zone, bereinigt und normalisiert die Daten.
-    Nutzt Chunking + Streaming-Write, um Memory-Probleme zu vermeiden.
+    Loads OpenFoodFacts Parquet from Landing Zone, cleans and normalizes the data.
+    Uses chunking + streaming write to avoid memory issues.
     """
     import pyarrow as pa
     import pyarrow.parquet as pq
@@ -413,8 +413,8 @@ def clean_openfoodfacts_data():
 
 def enrich_and_merge():
     """
-    Lädt bereinigte USDA- und OpenFoodFacts-Daten, führt sie zusammen und erstellt
-    einen angereicherten Datensatz für die Analyse.
+    Loads cleaned USDA and OpenFoodFacts data, merges them and creates
+    an enriched dataset for analysis.
     """
     try:
         print("📥 Loading USDA data...")
@@ -530,5 +530,5 @@ with DAG(
         python_callable=enrich_and_merge,
     )
 
-    # Pipeline: Bereinige beide Datasets parallel, dann merge
+    # Pipeline: Clean both datasets in parallel, then merge
     [clean_usda, clean_off] >> enrich

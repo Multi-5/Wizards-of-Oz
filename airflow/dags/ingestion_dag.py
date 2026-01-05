@@ -10,10 +10,10 @@ from datetime import timedelta
 START_DATE = pendulum.datetime(2024, 1, 1, tz="UTC")
 
 
-# Neue Pfade: Rohdaten liegen jetzt in /opt/airflow/data/data_unclean/
+# New paths: Raw data is now in /opt/airflow/data/data_unclean/
 SRC_JSON = "/opt/airflow/data/data_unclean/FoodData_Central_foundation_food_json_2025-04-24.json"
 SRC_PARQUET = "/opt/airflow/data/data_unclean/food.parquet"
-# Ziel: Landing Zone
+# Target: Landing Zone
 DST_JSON = "/opt/airflow/data/landing/FoodData_Central_foundation_food_json_2025-04-24.json"
 DST_PARQUET = "/opt/airflow/data/landing/food.parquet"
 
