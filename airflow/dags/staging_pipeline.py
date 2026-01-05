@@ -118,25 +118,30 @@ def clean_openfoodfacts_data():
         'energy-kcal_100g', 'proteins_100g', 'fat_100g',
         'carbohydrates_100g', 'sugars_100g', 'fiber_100g',
         'salt_100g', 'sodium_100g', 'nutrition-score-fr_100g',
-        'main_category'
+        'main_category', 'nutriments'
     ]
 
     rename_map = {
         'code': 'food_id',
         'product_name': 'description',
-        'main_category': 'category',
-        'energy-kcal_100g': 'energy_kcal',
-        'proteins_100g': 'protein_g',
-        'fat_100g': 'fat_g',
-        'carbohydrates_100g': 'carbohydrate_g',
-        'sugars_100g': 'sugar_g',
-        'fiber_100g': 'fiber_g',
-        'sodium_100g': 'sodium_mg',
-        'salt_100g': 'salt_g'
+        'main_category': 'category'
     }
 
+    def extract_nutrients(nutrient_list):
+        wanted = {"energy-kcal", "proteins", "fat", "carbohydrates", "sugars", "fiber", "salt", "sodium", "iron", "calcium", "magnesium", "potassium", "zinc", "vitamin-a", "vitamin-c", "vitamin-d", "vitamin-e"}
+        result = {}
+
+        if nutrient_list is None:
+            nutrient_list = []
+        for n in nutrient_list:
+            name = n.get("name")
+            if name in wanted:
+                result[name] = n.get("100g")  # or "value"
+
+        return result
+
     parquet_file = pq.ParquetFile(LANDING_PARQUET)
-    available_columns = [col for col in relevant_cols if col in parquet_file.schema.names]
+    available_columns = [col for col in relevant_cols if col in parquet_file.schema_arrow.names]
     chunk_size = 10000
     print(f"📊 Reading {parquet_file.metadata.num_rows} rows in chunks of {chunk_size:,}...")
 
@@ -162,6 +167,34 @@ def clean_openfoodfacts_data():
 
             df_chunk['product_name'] = df_chunk['product_name'].apply(extract_product_name)
 
+        # Extract nutrients from nutriments column
+        if 'nutriments' in df_chunk.columns:
+            df_chunk['nutrients_extracted'] = df_chunk['nutriments'].apply(extract_nutrients)
+            df_chunk['energy_kcal'] = df_chunk['nutrients_extracted'].apply(lambda x: x.get('energy-kcal'))
+            df_chunk['protein_g'] = df_chunk['nutrients_extracted'].apply(lambda x: x.get('proteins'))
+            df_chunk['fat_g'] = df_chunk['nutrients_extracted'].apply(lambda x: x.get('fat'))
+            df_chunk['carbohydrate_g'] = df_chunk['nutrients_extracted'].apply(lambda x: x.get('carbohydrates'))
+            df_chunk['sugar_g'] = df_chunk['nutrients_extracted'].apply(lambda x: x.get('sugars'))
+            df_chunk['fiber_g'] = df_chunk['nutrients_extracted'].apply(lambda x: x.get('fiber'))
+            df_chunk['salt_g'] = df_chunk['nutrients_extracted'].apply(lambda x: x.get('salt'))
+            df_chunk['sodium_mg'] = df_chunk['nutrients_extracted'].apply(lambda x: x.get('sodium'))
+            df_chunk['iron_mg'] = df_chunk['nutrients_extracted'].apply(lambda x: x.get('iron'))
+            df_chunk['calcium_mg'] = df_chunk['nutrients_extracted'].apply(lambda x: x.get('calcium'))
+            df_chunk['magnesium_mg'] = df_chunk['nutrients_extracted'].apply(lambda x: x.get('magnesium'))
+            df_chunk['potassium_mg'] = df_chunk['nutrients_extracted'].apply(lambda x: x.get('potassium'))
+            df_chunk['zinc_mg'] = df_chunk['nutrients_extracted'].apply(lambda x: x.get('zinc'))
+            df_chunk['vitamin_a_ug'] = df_chunk['nutrients_extracted'].apply(lambda x: x.get('vitamin-a'))
+            df_chunk['vitamin_c_mg'] = df_chunk['nutrients_extracted'].apply(lambda x: x.get('vitamin-c'))
+            df_chunk['vitamin_d_ug'] = df_chunk['nutrients_extracted'].apply(lambda x: x.get('vitamin-d'))
+            df_chunk['vitamin_e_mg'] = df_chunk['nutrients_extracted'].apply(lambda x: x.get('vitamin-e'))
+            df_chunk = df_chunk.drop(columns=['nutriments', 'nutrients_extracted'])
+
+        # Ensure nutrient columns are numeric and fill nulls
+        nutrient_cols = ['energy_kcal', 'protein_g', 'fat_g', 'carbohydrate_g', 'sugar_g', 'fiber_g', 'salt_g', 'sodium_mg', 'iron_mg', 'calcium_mg', 'magnesium_mg', 'potassium_mg', 'zinc_mg', 'vitamin_a_ug', 'vitamin_c_mg', 'vitamin_d_ug', 'vitamin_e_mg']
+        for col in nutrient_cols:
+            if col in df_chunk.columns:
+                df_chunk[col] = pd.to_numeric(df_chunk[col], errors='coerce').fillna(0)
+
         df_chunk = df_chunk.rename(columns=rename_map)
         df_chunk['source'] = 'OpenFoodFacts'
 
@@ -173,9 +206,6 @@ def clean_openfoodfacts_data():
                 df_chunk['description'] = df_chunk['description'].fillna(df_chunk[fallback_col])
 
         df_chunk['description'] = df_chunk['description'].fillna('unknown product')
-
-        if 'sodium_mg' in df_chunk.columns:
-            df_chunk['sodium_mg'] = df_chunk['sodium_mg'] * 1000
 
         numeric_cols = df_chunk.select_dtypes(include=['float64', 'int64']).columns
         df_chunk[numeric_cols] = df_chunk[numeric_cols].fillna(0)
