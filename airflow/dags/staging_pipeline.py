@@ -352,6 +352,12 @@ def clean_openfoodfacts_data():
             if col in df_chunk.columns:
                 df_chunk[col] = pd.to_numeric(df_chunk[col], errors='coerce').fillna(0)
 
+        # Convert g to mg for nutrients that are in g
+        g_to_mg_cols = ['sodium_mg', 'iron_mg', 'calcium_mg', 'magnesium_mg', 'potassium_mg', 'zinc_mg', 'vitamin_c_mg', 'vitamin_e_mg']
+        for col in g_to_mg_cols:
+            if col in df_chunk.columns:
+                df_chunk[col] = df_chunk[col] * 1000
+
         df_chunk = df_chunk.rename(columns=rename_map)
         df_chunk['source'] = 'OpenFoodFacts'
 
