@@ -38,7 +38,8 @@ Storage and conventions used in the repo:
 
 ## Ingestion
 
-We implemented a minimal, transparent ingestion layer whose main job is to place immutable copies of raw files into the pipeline's landing area and record their origin. The ingestion DAG is defined in `airflow/dags/ingestion_dag.py`; the two most important functions / tasks are:
+We implemented a minimal, transparent ingestion layer whose main job is to place immutable copies of raw files into the pipeline's landing area and record their origin. 
+The ingestion DAG is defined in `airflow/dags/ingestion_dag.py`; the two most important functions / tasks are:
 
 - `_ensure_directories(...)` — a small helper that creates required folders inside the container (called at DAG import time).
 - Two BashOperator tasks: `ingest_json` and `ingest_parquet` which run a `cp` command to copy the source files from the host-mounted `data` folder into the container landing zone. The source and destination paths are defined at the top of `ingestion_dag.py` as `SRC_JSON`, `SRC_PARQUET`, and `DST_JSON`, `DST_PARQUET`.
@@ -50,7 +51,8 @@ We chose the simplest robust approach for ingestion for two reasons: (1) the raw
 Where to put data
 
 - Place USDA JSON at `airflow/data/dataunclean/FoodData_Central_foundation_food_json_2025-04-24.json` (or update `SRC_JSON` in `ingestion_dag.py`).
-- Place the OpenFoodFacts Parquet (commonly named `food.parquet`) in `airflow/data/dataunclean/`. The ingestion DAG copies it to `airflow/data/landing/`.
+- Place the OpenFoodFacts Parquet (commonly named `food.parquet`) in `airflow/data/dataunclean/`. 
+The ingestion DAG copies it to `airflow/data/landing/`.
 
 Notes on idempotence and ops
 
