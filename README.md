@@ -311,7 +311,9 @@ docker compose up --build
 - Place the OpenFoodFacts `food.parquet` into `airflow/data/dataunclean/` before triggering the ingestion DAG if you intend to run the full dataset ingestion.
 
 ## Limitations & Challenges
-During the development of this data pipeline, we encountered several significant challenges. The OpenFoodFacts food.parquet file was extremely large, requiring us to implement chunked reading to avoid memory issues and ensure processing could complete within reasonable time limits. Additionally, we spent considerable time debugging data quality issues, particularly discovering that the USDA JSON file was being parsed incorrectly, resulting in numerous NaN values appearing throughout the dataset. We also had to account for variations in nutrient naming conventions across different data sources, implementing flexible matching logic to handle these inconsistencies and ensure accurate nutrient extraction.
+During the development of this data pipeline, we encountered several significant challenges. The OpenFoodFacts food.parquet file was extremely large, requiring us to implement chunked reading to avoid memory issues and ensure processing could complete within reasonable time limits. Additionally, we spent considerable time debugging data quality issues, particularly discovering that the USDA JSON file was being parsed incorrectly, resulting in numerous NaN values appearing throughout the dataset. We also had to account for variations in nutrient naming conventions across different data sources, implementing flexible matching logic to handle these inconsistencies and ensure accurate nutrient extraction.</br>
+Another important limitation concerns dataset imbalance. Due to the significantly larger size of OpenFoodFacts compared to the other data sources, some aggregated comparisons may be biased toward this dataset. This imbalance should be taken into account when interpreting the results of comparative analytics.
+
 
 
 ## Note for Students
