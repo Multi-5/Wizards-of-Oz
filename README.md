@@ -18,7 +18,7 @@ This project was built during the course to practise end-to-end data engineering
 The implementation is pragmatic: each core operation is written as a small Python function inside the Airflow DAGs so reviewers can run and inspect the steps easily. Where possible we document the exact function names used in the DAGs to make it simple to find the code that performs a transformation.
 
 ## Pipeline
-![Pipeline](./images/FoD_Pipeline.png)
+![Pipeline](./images/FoD_Pipeline_new.png)
 
 ## Datasets Description 
 
@@ -116,9 +116,16 @@ WHERE s.source_name IN ('USDA','OpenFoodFacts')
 GROUP BY c.category_name, s.source_name
 ORDER BY c.category_name, s.source_name;
 ```
-  
+<details>
+
+<summary>Query solution</summary>
+
+![SQL Query 1](./images/SQL_query_1.png)
+
+</details> 
+
 2. Which food categories show the largest fat content differences between raw and processed versions?
-  ```
+```
 SELECT c.category_name,
        AVG(CASE WHEN s.source_name = 'USDA' THEN f.fat_g END) AS avg_fat_usda,
        AVG(CASE WHEN s.source_name = 'OpenFoodFacts' THEN f.fat_g END) AS avg_fat_off,
@@ -138,9 +145,16 @@ ORDER BY ABS(AVG(CASE WHEN s.source_name = 'OpenFoodFacts' THEN f.fat_g END) -
 LIMIT 10;
 ```
 
-3.How does sodium (salt) content differ between homemade and commercial dishes of the same type?
+<details>
 
-  ```
+<summary>Query solution</summary>
+
+![SQL Query 2](./images/SQL_query_2.png)
+
+</details>
+
+3.How does sodium (salt) content differ between homemade and commercial dishes of the same type?
+```
 SELECT
     c.category_name AS dish_type,
     s.source_name   AS dataset,
@@ -155,8 +169,15 @@ WHERE s.source_name IN ('USDA','OpenFoodFacts')
 GROUP BY c.category_name, s.source_name
 HAVING AVG(f.sodium_mg) > 0
 ORDER BY c.category_name, s.source_name;
-  ```
-  
+```
+
+<details>
+
+<summary>Query solution</summary>
+
+![SQL Query 3](./images/SQL_query_3.png)
+
+</details> 
 
 
 ## Foodgraph
@@ -183,6 +204,16 @@ Notes
 MATCH (f:Food)-[:IN_CATEGORY]->(c:Category)
 RETURN f, c 
 ```
+
+<details>
+
+<summary>Query solution</summary>
+
+![Neo4j Query 1](./images/Neo4j_query_1.png)
+
+</details>
+
+
 2. Nutrient Comparison (Homemade vs Premade): </br>
 How does nutrient content compare between raw (USDA) and processed (OpenFoodFacts) foods?
 ```
@@ -199,6 +230,16 @@ MATCH (f:Food)-[:FROM_SOURCE]->(s:Source)
                     round(avg(f.vitamin_density), 4) as avg_vitamin_density
                 ORDER BY source, food_type
 ```
+
+<details>
+
+<summary>Query solution</summary>
+
+![Neo4j Query 2](./images/Neo4j_query_2.png)
+
+</details>
+
+
 3. Top Contributors to Calories, Fat, Sugar: </br>
 Which categories contribute most to calories, fat, and sugar?
 ```
@@ -217,7 +258,13 @@ MATCH (f:Food)-[:IN_CATEGORY]->(c:Category)
                 ORDER BY avg_calories_per_food DESC
                 LIMIT 10
 ```
+<details>
 
+<summary>Query solution</summary>
+
+![Neo4j Query 3](./images/Neo4j_query_3.png)
+
+</details>
 
 ## Requirements
 
