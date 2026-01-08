@@ -14,8 +14,6 @@ nutrient fields, and produces a harmonized enriched Parquet file for
 downstream analysis. Chunked reads are used for large OpenFoodFacts
 files to keep memory usage bounded.
 
-All console/log messages are plain text (no emoji) to keep CI/logs
-clean and machine-friendly.
 """
 
 START_DATE = pendulum.datetime(2024, 1, 1, tz="UTC")
@@ -49,7 +47,7 @@ def clean_usda_data():
     """
     Load USDA JSON from the landing zone, normalize and flatten nutrient
     information, perform basic cleaning and persist the cleaned dataset
-    as Parquet in the staging area.
+    as Parquet in the staging area
 
     Steps:
     - Parse FoundationFoods entries
@@ -134,8 +132,8 @@ def clean_openfoodfacts_data():
     """
     Load OpenFoodFacts Parquet from the landing zone, clean and normalize
     the fields, and write a streaming Parquet output to staging. This
-    function reads the large Parquet file in chunks to keep memory use
-    bounded and writes using `pyarrow.ParquetWriter`.
+    function reads our large Parquet file in chunks to keep memory use
+    bounded and writes using `pyarrow.ParquetWriter`
     """
     import pyarrow as pa
     import pyarrow.parquet as pq
@@ -329,11 +327,60 @@ def clean_openfoodfacts_data():
         total_rows += len(df_chunk)
 
         if 'product_name' in df_chunk.columns:
-            def extract_product_name(arr):
-                if isinstance(arr, (list, tuple)) and len(arr) > 0:
-                    first_entry = arr[0]
-                    if isinstance(first_entry, dict) and 'text' in first_entry:
-                        return first_entry['text']
+            def extract_product_name(val):
+                """
+                Robust extractor for OpenFoodFacts product_name field
+                Handles:
+                - list of dicts [{"lang":"main","text":"..."}, ...]
+                - dict {"text": "..."}
+                - JSON-encoded string
+                - plain string
+                Prefers entries with lang 'main' or 'en'
+                """
+                if val is None:
+                    return None
+                # If it's already a string that looks like JSON, try to parse
+                try:
+                    if isinstance(val, str):
+                        try:
+                            parsed = json.loads(val)
+                        except Exception:
+                            # not JSON, return the raw string
+                            return val
+                    else:
+                        parsed = val
+
+                    if isinstance(parsed, dict):
+                        if 'text' in parsed:
+                            return parsed.get('text')
+                        # maybe single mapping of languages
+                        # e.g. {"main": "name", "en": "name"}
+                        for pref in ('main', 'en'):
+                            if pref in parsed and isinstance(parsed[pref], str):
+                                return parsed[pref]
+                        return None
+
+                    # treat sequences (list/tuple/numpy array etc.) uniformly
+                    if isinstance(parsed, (list, tuple)) or (not isinstance(parsed, (str, bytes, dict)) and hasattr(parsed, '__iter__')):
+                        try:
+                            seq = list(parsed)
+                        except Exception:
+                            seq = None
+
+                        if seq:
+                            # Prefer lang main/en
+                            for lang in ('main', 'en'):
+                                for item in seq:
+                                    if isinstance(item, dict) and item.get('lang') == lang and item.get('text'):
+                                        return item.get('text')
+                            # fallback to first available text
+                            for item in seq:
+                                if isinstance(item, dict) and item.get('text'):
+                                    return item.get('text')
+                        return None
+
+                except Exception:
+                    return None
                 return None
 
             df_chunk['product_name'] = df_chunk['product_name'].apply(extract_product_name)
@@ -440,7 +487,7 @@ def clean_openfoodfacts_data():
 def enrich_and_merge():
     """
     Loads cleaned USDA and OpenFoodFacts data, merges them and creates
-    an enriched dataset for analysis.
+    an enriched dataset for analysis
     """
     try:
         # Load cleaned USDA dataset from staging

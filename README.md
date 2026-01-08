@@ -87,11 +87,15 @@ Design choices
 
 - Use a star schema: a central `fact_food_nutrition` containing product_id, nutrient_id and value_per_100g, linked to `dim_product`, `dim_category`, `dim_nutrient` and `dim_source`.
 - Store the analytical tables in Postgres (`warehouse` database) to leverage SQL for aggregation and joins.
-- Use Neo4j for product-ingredient relationships and category co-occurrence graphs. Neo4j is optional and intended for exploratory analysis.
+- Use Neo4j for product-ingredient relationships and category co-occurrence graphs. Neo4j is optional and is more intended as an extra.
+
+![Star Schema](./images/star_schema.svg)
 
 Data versioning and backup
 
 The `backup_to_production()` function ensures data persistence and versioning by creating timestamped copies of the enriched dataset in the production zone. Each pipeline run generates a uniquely named backup file (e.g., `enriched_food_data_20260105_143022.parquet`) while maintaining a "latest" version for immediate access by downstream processes. This approach provides both historical data recovery capabilities and ensures the most recent processed data is always readily available.
+
+
 
 
 ### Queries 
@@ -184,25 +188,39 @@ ORDER BY c.category_name, s.source_name;
 
 Purpose and model
 
-The food graph is a complementary Neo4j model to explore relationships that are cumbersome in relational schema, e.g., ingredient co-occurrence, brand-category-ingredient linkages, or similarity between products via shared ingredients.
+The food graph is a complementary Neo4j model to explore relationships that are hard to show in an relational schema, e.g., highest-Protein Foods Across Brands and Sources.
 
-Nodes and relationships (example):
+Nodes and relationships:
 
-- Product (product_id, name, brand)
-- Ingredient (ingredient_id, name, normalized_name)
-- Category (category_id, name)
-- (Product)-[:CONTAINS]->(Ingredient)
-- (Product)-[:BELONGS_TO]->(Category)
+  | Node type  | Key Properties | Description |
+  | ------------- | ------------- |------------- |
+  | Food  | `food_id, description, food_type` | individual food / product entry from a dataset |
+  | Category  | `name`  |  food category (e.g. fats and oils, beverages), shared across datasets |
+  | Nutrient  | `name, unit`  |  nutritional attribute (e.g. protein_g, vitamin_c_mg, magnesium_mg) |
+ | Source  | `name`  |  dataset of a food item (USDA / OpenFoodFacts) |
+ | Brand  | `name`  |  manufacturer or brand of food item, only available in OpenFoodFacts |
+
+- (Food)-[:HAS_NUTRIENT {amount}]->(Nutrient)
+- (Food)-[:IN_CATEGORY]->(Category)
+- (Food)-[:FROM_SOURCE]->(Source)
+- (Food)-[:MANUFACTURED_BY]->(Brand)
+
+![Schema nodes & relationsships](./images/nodes_relations.png)
 
 Notes
 
 - The Neo4j instance is optional for main analytics; it is used for exploration and visualization.
 
 ### Queries 
-1. All Foods with Categories
+1. Highest-Protein Foods Across Brands and Sources:
 ```
-MATCH (f:Food)-[:IN_CATEGORY]->(c:Category)
-RETURN f, c 
+MATCH (f:Food)-[r:HAS_NUTRIENT]->(n:Nutrient {name:'protein_g'})
+OPTIONAL MATCH (f)-[:MANUFACTURED_BY]->(b:Brand)
+OPTIONAL MATCH (f)-[:FROM_SOURCE]->(s:Source)
+WITH f, r, n, b, s
+ORDER BY r.amount DESC
+LIMIT 50
+RETURN f, r, n, b, s;
 ```
 
 <details>
@@ -210,27 +228,23 @@ RETURN f, c
 <summary>Query solution</summary>
 
 ![Neo4j Query 1](./images/Neo4j_query_1.png)
+![Neo4j Query 1 table](./images/Neo4j_query_1_1.png)
 
 </details>
 
-
-2. Nutrient Comparison (Homemade vs Premade): </br>
-How does nutrient content compare between raw (USDA) and processed (OpenFoodFacts) foods?
+2. Foods with High Sodium or Salt Content (Raw & Processed): </br>
 ```
-MATCH (f:Food)-[:FROM_SOURCE]->(s:Source)
-                WHERE f.energy_kcal IS NOT NULL
-                RETURN 
-                    s.name as source,
-                    f.food_type as food_type,
-                    count(f) as food_count,
-                    round(avg(f.protein_g), 2) as avg_protein_g,
-                    round(avg(f.fat_g), 2) as avg_fat_g,
-                    round(avg(f.carbohydrate_g), 2) as avg_carb_g,
-                    round(avg(f.total_vitamins), 2) as avg_total_vitamins,
-                    round(avg(f.vitamin_density), 4) as avg_vitamin_density
-                ORDER BY source, food_type
+MATCH (f:Food)-[r:HAS_NUTRIENT]->(n:Nutrient)
+WHERE toLower(coalesce(f.food_type,'')) IN ['raw','processed']
+AND (toLower(n.name) CONTAINS 'sodium' OR toLower(n.name) CONTAINS 'salt')
+AND (
+(toLower(coalesce(n.unit,'')) = 'mg' AND r.amount > 20)
+OR (toLower(coalesce(n.unit,'')) = 'g' AND r.amount > 0.02) // 0.02 g = 20 mg
+OR (n.unit IS NULL AND r.amount > 20)
+)
+RETURN f, r, n
+LIMIT 200;
 ```
-
 <details>
 
 <summary>Query solution</summary>
@@ -239,30 +253,55 @@ MATCH (f:Food)-[:FROM_SOURCE]->(s:Source)
 
 </details>
 
-
-3. Top Contributors to Calories, Fat, Sugar: </br>
-Which categories contribute most to calories, fat, and sugar?
+3. Foods in the Fats and Oils Category: Nutrient Breakdown by Source: </br>
 ```
-MATCH (f:Food)-[:IN_CATEGORY]->(c:Category)
-                WHERE f.energy_kcal IS NOT NULL AND f.energy_kcal > 0
-                WITH c.name as category,
-                     sum(f.energy_kcal) as total_calories,
-                     sum(f.fat_g) as total_fat,
-                     sum(f.sugar_g) as total_sugar,
-                     count(f) as food_count
-                RETURN category, food_count,
-                       round(total_calories, 0) as total_calories,
-                       round(total_fat, 1) as total_fat_g,
-                       round(total_sugar, 1) as total_sugar_g,
-                       round(total_calories / food_count, 1) as avg_calories_per_food
-                ORDER BY avg_calories_per_food DESC
-                LIMIT 10
+MATCH (c:Category {name: "fats and oils"})
+MATCH (s:Source)<-[:FROM_SOURCE]-(f:Food)-[:IN_CATEGORY]->(c)
+MATCH (f)-[r:HAS_NUTRIENT]->(n:Nutrient)
+WHERE n.name IN [
+  'energy_kcal','protein_g','fat_g','carbohydrate_g','sugar_g','fiber_g',
+  'vitamin_c_mg','magnesium_mg'
+]
+  AND r.amount > 0
+RETURN s, c, f, r, n
+LIMIT 200;
+
 ```
 <details>
 
 <summary>Query solution</summary>
 
 ![Neo4j Query 3](./images/Neo4j_query_3.png)
+
+</details>
+
+4. Nutrient-Level Average Comparison Between OpenFoodFacts and USDA: </br>
+```
+MATCH (n:Nutrient)
+CALL {
+  WITH n
+  OPTIONAL MATCH (s1:Source {name:'USDA'})<-[:FROM_SOURCE]-(fu:Food)-[r1:HAS_NUTRIENT]->(n)
+  RETURN avg(r1.amount) AS avg_usda
+}
+CALL {
+  WITH n
+  OPTIONAL MATCH (s2:Source {name:'OpenFoodFacts'})<-[:FROM_SOURCE]-(fo:Food)-[r2:HAS_NUTRIENT]->(n)
+  RETURN avg(r2.amount) AS avg_off
+}
+RETURN n.name AS nutrient,
+       round(coalesce(avg_usda,0), 6) AS avg_usda,
+       round(coalesce(avg_off,0), 6) AS avg_openfoodfacts,
+       round(coalesce(avg_off,0) - coalesce(avg_usda,0), 6) AS diff
+ORDER BY abs(diff) DESC
+LIMIT 50;
+
+```
+
+<details>
+
+<summary>Query solution</summary>
+
+![Neo4j Query 4](./images/Neo4j_query_4.png)
 
 </details>
 
