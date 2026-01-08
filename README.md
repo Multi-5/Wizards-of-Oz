@@ -85,7 +85,7 @@ Produce analytics-ready datasets: dimensional tables and a fact table (star sche
 
 Design choices
 
-- Use a star schema: a central `fact_food_nutrition` containing product_id, nutrient_id and value_per_100g, linked to `dim_product`, `dim_category`, `dim_nutrient` and `dim_source`.
+- Use of a star schema: a central `fact_food_nutrition` containing product_id, nutrient_id and value_per_100g, linked to `dim_product`, `dim_category`, `dim_nutrient` and `dim_source`.
 - Store the analytical tables in Postgres (`warehouse` database) to leverage SQL for aggregation and joins.
 - Use Neo4j for product-ingredient relationships and category co-occurrence graphs. Neo4j is optional and is more intended as an extra.
 
@@ -188,7 +188,7 @@ ORDER BY c.category_name, s.source_name;
 
 Purpose and model
 
-The food graph is a complementary Neo4j model to explore relationships that are hard to show in an relational schema, e.g., highest-Protein Foods Across Brands and Sources.
+The food graph is a complementary Neo4j model to explore relationships that are hard to show in an relational schema, e.g., highest-protein foods across brands and sources.
 
 Nodes and relationships:
 
@@ -212,7 +212,7 @@ Notes
 - The Neo4j instance is optional for main analytics; it is used for exploration and visualization.
 
 ### Queries 
-1. Highest-Protein Foods Across Brands and Sources:
+1. Highest-protein foods across brands and sources:
 ```
 MATCH (f:Food)-[r:HAS_NUTRIENT]->(n:Nutrient {name:'protein_g'})
 OPTIONAL MATCH (f)-[:MANUFACTURED_BY]->(b:Brand)
@@ -232,7 +232,7 @@ RETURN f, r, n, b, s;
 
 </details>
 
-2. Foods with High Sodium or Salt Content (Raw & Processed): </br>
+2. Foods with high sodium or salt content (raw & processed): </br>
 ```
 MATCH (f:Food)-[r:HAS_NUTRIENT]->(n:Nutrient)
 WHERE toLower(coalesce(f.food_type,'')) IN ['raw','processed']
@@ -253,7 +253,7 @@ LIMIT 200;
 
 </details>
 
-3. Foods in the Fats and Oils Category: Nutrient Breakdown by Source: </br>
+3. Foods in the fats and oils category: nutrient breakdown by source: </br>
 ```
 MATCH (c:Category {name: "fats and oils"})
 MATCH (s:Source)<-[:FROM_SOURCE]-(f:Food)-[:IN_CATEGORY]->(c)
@@ -275,7 +275,7 @@ LIMIT 200;
 
 </details>
 
-4. Nutrient-Level Average Comparison Between OpenFoodFacts and USDA: </br>
+4. Nutrient-Level average comparison between OpenFoodFacts and USDA: </br>
 ```
 MATCH (n:Nutrient)
 CALL {
