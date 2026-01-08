@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="620" viewBox="0 0 1000 620">
+  <style>
+    .tbl { fill:#ffffff; stroke:#2b6cb0; stroke-width:2; rx:6; }
+    .tbl-title { font: bold 16px sans-serif; fill:#2b6cb0; }
+    .col { font: 13px monospace; fill:#1a202c; }
+    .fk { fill:#2b6cb0; }
+    .pk { fill:#d53f8c; }
+    .line { stroke:#4a5568; stroke-width:2; }
+    .label { font: 12px sans-serif; fill:#2d3748; }
+  </style>
+<!--central fact table-->
+  <rect x="300" y="210" width="400" height="120" class="tbl"/>
+  <text x="320" y="235" class="tbl-title">fact_food_nutrition</text>
+  <text x="320" y="260" class="col pk">fact_id (PK)</text>
+  <text x="320" y="280" class="col fk">product_key (FK) • nutrient_key (FK)</text>
+  <text x="320" y="300" class="col">category_key (FK) • source_key (FK)</text>
+  <text x="320" y="320" class="col">value_per_100g • measurement_unit</text>
+<!--dim_product-->
+  <rect x="60" y="40" width="220" height="140" class="tbl"/>
+  <text x="80" y="65" class="tbl-title">dim_product</text>
+  <text x="80" y="90" class="col pk">product_key (PK)</text>
+  <text x="80" y="110" class="col">product_id (source id)</text>
+  <text x="80" y="130" class="col">product_name</text>
+  <text x="80" y="150" class="col">brand • upc • manufacturer</text>
+<!--dim_category-->
+  <rect x="60" y="420" width="220" height="120" class="tbl"/>
+  <text x="80" y="445" class="tbl-title">dim_category</text>
+  <text x="80" y="470" class="col pk">category_key (PK)</text>
+  <text x="80" y="490" class="col">category_name</text>
+  <text x="80" y="510" class="col">parent_category</text>
+<!--dim_nutrient-->
+  <rect x="720" y="40" width="220" height="140" class="tbl"/>
+  <text x="740" y="65" class="tbl-title">dim_nutrient</text>
+  <text x="740" y="90" class="col pk">nutrient_key (PK)</text>
+  <text x="740" y="110" class="col">nutrient_id (source id)</text>
+  <text x="740" y="130" class="col">nutrient_name</text>
+  <text x="740" y="150" class="col">unit • rdfs_category</text>
+<!--dim_source-->
+  <rect x="720" y="420" width="220" height="120" class="tbl"/>
+  <text x="740" y="445" class="tbl-title">dim_source</text>
+  <text x="740" y="470" class="col pk">source_key (PK)</text>
+  <text x="740" y="490" class="col">source_name</text>
+  <text x="740" y="510" class="col">source_type • ingest_date</text>
+<!--connecting lines-->
+  <line x1="300" y1="250" x2="160" y2="180" class="line"/>
+  <line x1="700" y1="250" x2="820" y2="180" class="line"/>
+  <line x1="300" y1="290" x2="160" y2="420" class="line"/>
+  <line x1="700" y1="290" x2="820" y2="420" class="line"/>
+<!--labels on lines-->
+  <text x="210" y="195" class="label">product_key → dim_product.product_key</text>
+  <text x="570" y="195" class="label">nutrient_key → dim_nutrient.nutrient_key</text>
+  <text x="210" y="415" class="label">category_key → dim_category.category_key</text>
+  <text x="595" y="415" class="label">source_key → dim_source.source_key</text>
+
+</svg>
